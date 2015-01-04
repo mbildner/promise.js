@@ -14,14 +14,17 @@ function Promise (addCallback, addErrorHandler) {
     return promise;
   };
 
-  this.catch = function (err) {
-
+  this.catch = function (errorHandlerFunc) {
+    addErrorHandler(errorHandlerFunc);
+    return promise;
   };
+
 }
 
 function Deferred () {
   var deferred = this;
   var callbackQueue = [];
+  var errorHandler;
 
 
   this.reject = function (error) {
@@ -29,8 +32,6 @@ function Deferred () {
   };
 
   this.resolve = function (value) {
-    var errorHandler;
-
     var callbackFunc;
     var intermediateVal = value;
     var nextVal;
@@ -38,17 +39,22 @@ function Deferred () {
     var nextIsPromise;
 
     while ((callbackFunc = callbackQueue.shift())) {
-      nextVal = callbackFunc(intermediateVal);
-      nextIsPromise = Promise.isPromise(nextVal);
+      try {
+        nextVal = callbackFunc(intermediateVal);
+        nextIsPromise = Promise.isPromise(nextVal);
 
-      if (nextIsPromise) {
-        // move all remaining callbacks to the next promise
-        while ((callbackQueue.length)) {
-          nextVal.then(callbackQueue.shift());
+        if (nextIsPromise) {
+          // move all remaining callbacks to the next promise
+          while ((callbackQueue.length)) {
+            nextVal.then(callbackQueue.shift());
+          }
+          nextVal.catch(errorHandler);
         }
-      }
 
-      intermediateVal = nextVal;
+        intermediateVal = nextVal;
+      } catch (e) {
+        errorHandler(e);
+      }
     }
   };
 
@@ -58,7 +64,6 @@ function Deferred () {
 
   function addErrorHandler (errorHandlerFunc) {
     errorHandler = errorHandlerFunc;
-    console.log(errorHandler);
   }
 
   this.promise = new Promise(addCallback, addErrorHandler);
@@ -137,6 +142,7 @@ asyncCall('moshe')
   })
   .then(function (name) {
     console.log(name);
+    throw new Error('trolololol');
   })
   .then(function () {
     var deferred = q.defer();
@@ -148,13 +154,44 @@ asyncCall('moshe')
     return deferred.promise;
   })
   .catch(function (err) {
-    console.log(err);
+    console.log('oops there was an error: ', err);
   });
 
-var promisesArr = [1,2,3,4,5,6,7,8,9,10].map(function (num) {
-  return asyncCall(num);
-});
+// var promisesArr = [1,2,3,4,5,6,7,8,9,10].map(function (num) {
+//   return asyncCall(num);
+// });
 
-q.all(promisesArr).then(function (numbersArr) {
-  console.log(numbersArr);
-});
+// q.all(promisesArr).then(function (numbersArr) {
+//   console.log(numbersArr);
+// });
+
+
+// q.all([
+//   q.all([
+//     asyncCall('m'),
+//     asyncCall('o'),
+//     asyncCall('s'),
+//     asyncCall('h'),
+//     asyncCall('e')
+//   ]),
+//   q.all([
+//     asyncCall('g'),
+//     asyncCall('e'),
+//     asyncCall('r'),
+//     asyncCall('y')
+//   ]),
+//   q.all([
+//     asyncCall('l'),
+//     asyncCall('u'),
+//     asyncCall('k'),
+//     asyncCall('e')
+//   ])
+// ]).then(function (arrArr) {
+//   console.log('all the all the things finished');
+//   console.log(arrArr);
+// });
+
+
+
+
+

@@ -1,63 +1,84 @@
-function randomMilliSeconds () {
-  return Math.round(Math.random() * 1000);
-}
-
-function randTimeout (callback) {
-  setTimeout(callback, randomMilliSeconds);
-}
-
-function Promise (addCallback, addErrorHandler) {
+function Promise (addDeferredCallback, addDeferredErrorHandler) {
   var promise = this;
 
-  this.then = function (callbackFunc) {
-    addCallback(callbackFunc);
-    return promise;
-  };
+  this.then = then;
+  this.catch = _catch;
 
-  this.catch = function (errorHandlerFunc) {
-    addErrorHandler(errorHandlerFunc);
+  function then (callbackFunc) {
+    addDeferredCallback(callbackFunc);
     return promise;
-  };
+  }
 
+  // `catch` is reserved
+  function _catch (errorHandlerFunc) {
+    addDeferredErrorHandler(errorHandlerFunc);
+    return promise;
+  }
 }
+
+Promise.isPromise = function (thing) {
+  return thing instanceof Promise;
+};
+
 
 function Deferred () {
   var deferred = this;
   var callbackQueue = [];
-  var errorHandler;
 
+  // noop error handler func to be overwritten by .catch
+  var errorHandler = function () {};
 
-  this.reject = function (error) {
+  this.promise = getPrivilegedPromise()
+  this.reject = reject;
+  this.resolve = resolve;
 
-  };
+  function reject (errorReason) {
+    var error = new Error(errorReason);
+    // clear the rest of our callbacks, none of them are going to be called
+    callbackQueue = [];
+    errorHandler(error);
+  }
 
-  this.resolve = function (value) {
+  function resolve (value) {
+    // the next callback from the queue
     var callbackFunc;
-    var intermediateVal = value;
-    var nextVal;
 
-    var nextIsPromise;
+    // for chained .then calls, we need to hold intermediate results
+    // initialize these results with the initially resolved value
+    var nextVal = value;
 
+    // iterate over the queue callback array in FIFO order
     while ((callbackFunc = callbackQueue.shift())) {
+      // promises handle errors in their resolution
       try {
-        nextVal = callbackFunc(intermediateVal);
-        nextIsPromise = Promise.isPromise(nextVal);
+        nextVal = callbackFunc(nextVal);
 
-        if (nextIsPromise) {
+        // promises are chainable:
+        //  if a promise is provided as the callback to a promise they should operate
+        //  sequentially - the final resolved value of the first promise
+        //  is provided as the initial resolved value of the next promise
+        if (Promise.isPromise(nextVal)) {
           // move all remaining callbacks to the next promise
           while ((callbackQueue.length)) {
             nextVal.then(callbackQueue.shift());
           }
+
+          // move error handler to the next promise
           nextVal.catch(errorHandler);
         }
-
-        intermediateVal = nextVal;
-      } catch (e) {
+      }
+      // catch and handle any errors thrown by a .then callback
+      catch (e) {
         errorHandler(e);
       }
     }
-  };
+  }
 
+  // privileged functions that have access to the Deferred constructor's closure
+  // cleaner and safer than exposing these as Deferred methods or letting the promise
+  // modify these data structures directly, and better than redefining the Promise
+  // constructor in the Deferred constructor since it's more memory efficient and
+  // makes identifying promises simpler.
   function addCallback (callbackFunc) {
     callbackQueue.push(callbackFunc);
   }
@@ -66,18 +87,11 @@ function Deferred () {
     errorHandler = errorHandlerFunc;
   }
 
-  this.promise = new Promise(addCallback, addErrorHandler);
+  function getPrivilegedPromise () {
+    return new Promise(addCallback, addErrorHandler);
+  }
 
 }
-
-Deferred.isDeferred = function (thing) {
-  return thing instanceof Deferred;
-};
-
-Promise.isPromise = function (thing) {
-  return thing instanceof Promise;
-};
-
 
 function asyncCall (value) {
   var deferred = q.defer();
@@ -120,13 +134,22 @@ function all (promiseArr) {
   return allFinishedDeferred.promise;
 }
 
+function defer () {
+  return new Deferred();
+}
 
 var q = {
-  defer: function () {
-    return new Deferred();
-  },
+  defer: defer,
   all: all
 };
+
+function randomMilliSeconds () {
+  return Math.round(Math.random() * 1000);
+}
+
+function randTimeout (callback) {
+  setTimeout(callback, randomMilliSeconds);
+}
 
 
 asyncCall('moshe')
@@ -142,54 +165,56 @@ asyncCall('moshe')
   })
   .then(function (name) {
     console.log(name);
-    throw new Error('trolololol');
   })
   .then(function () {
     var deferred = q.defer();
 
     setTimeout(function () {
-      deferred.reject(new Error('fuck yourself'));
+      deferred.reject('lololol this is an error too!');
     }, 100);
 
     return deferred.promise;
+  })
+  .then(function (resolutionError) {
+    console.log('getting: ', resolutionError);
   })
   .catch(function (err) {
     console.log('oops there was an error: ', err);
   });
 
-// var promisesArr = [1,2,3,4,5,6,7,8,9,10].map(function (num) {
-//   return asyncCall(num);
-// });
+var promisesArr = [1,2,3,4,5,6,7,8,9,10].map(function (num) {
+  return asyncCall(num);
+});
 
-// q.all(promisesArr).then(function (numbersArr) {
-//   console.log(numbersArr);
-// });
+q.all(promisesArr).then(function (numbersArr) {
+  console.log(numbersArr);
+});
 
 
-// q.all([
-//   q.all([
-//     asyncCall('m'),
-//     asyncCall('o'),
-//     asyncCall('s'),
-//     asyncCall('h'),
-//     asyncCall('e')
-//   ]),
-//   q.all([
-//     asyncCall('g'),
-//     asyncCall('e'),
-//     asyncCall('r'),
-//     asyncCall('y')
-//   ]),
-//   q.all([
-//     asyncCall('l'),
-//     asyncCall('u'),
-//     asyncCall('k'),
-//     asyncCall('e')
-//   ])
-// ]).then(function (arrArr) {
-//   console.log('all the all the things finished');
-//   console.log(arrArr);
-// });
+q.all([
+  q.all([
+    asyncCall('m'),
+    asyncCall('o'),
+    asyncCall('s'),
+    asyncCall('h'),
+    asyncCall('e')
+  ]),
+  q.all([
+    asyncCall('g'),
+    asyncCall('e'),
+    asyncCall('r'),
+    asyncCall('y')
+  ]),
+  q.all([
+    asyncCall('l'),
+    asyncCall('u'),
+    asyncCall('k'),
+    asyncCall('e')
+  ])
+]).then(function (arrArr) {
+  console.log('all the all the things finished');
+  console.log(arrArr);
+});
 
 
 

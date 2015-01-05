@@ -144,7 +144,7 @@
   /*
     PUBLIC API
    */
-  var q = {
+  var mhbPromises = {
     defer: defer,
     all: all
   };
@@ -153,10 +153,10 @@
     Exports
    */
   if (typeof module !== 'undefined') {
-    module.exports = q;
+    module.exports = mhbPromises;
   }
   else {
-    this.q = q;
+    this.mhbPromises = mhbPromises;
   }
 
 })();
